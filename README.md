@@ -24,7 +24,7 @@ El parser reconoce un subconjunto de Python que incluye:
 - ✅ Asignaciones simples (`id = expresión`)
 - ✅ Condicionales: `if`, `elif`, `else`
 - ✅ Bucles `while`
-- ✅ Funciones simples: `def nombre(): ...` (sin parámetros)
+- ✅ Funciones: `def nombre(): ...` 
 - ✅ Sentencia `return`
 - ✅ Sentencia `pass`
 - ✅ Impresión: `print(expresión)`

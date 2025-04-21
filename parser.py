@@ -201,7 +201,20 @@ class ManualRecursiveParser:
         token_type = self._peek()[0]
 
         if token_type == 'id':
-             self._assignment_stmt()
+             self._consume()
+             next_token = self._peek()[0]
+             if next_token == 'tk_asign':
+                self._match('tk_asign') 
+                self._expression()      
+
+             elif next_token == 'tk_par_izq':
+                 self._match('tk_par_izq')          
+                 self._argument_list() 
+                 self._match('tk_par_der')        
+
+             else:
+                self._error(self._peek(), "'=' o '(' (para llamada de funcion)")
+
         elif token_type == 'if':
              self._if_stmt()
         elif token_type == 'while':
@@ -225,6 +238,19 @@ class ManualRecursiveParser:
         self._match('id')
         self._match('tk_asign')
         self._expression()
+     
+    def _argument_list(self):
+        # argument_list_content ::= (expression (',' expression)*)?
+        if self.analysis_aborted: return
+
+        if self._peek()[0] == 'tk_par_der':
+            return 
+
+        self._expression()
+
+        while self._peek()[0] == 'tk_coma':
+            self._consume()
+            self._expression() 
 
     def _if_stmt(self):
         # if_stmt ::= 'if' comparison ':' suite ('elif' comparison ':' suite)* ('else' ':' suite)?
@@ -270,6 +296,7 @@ class ManualRecursiveParser:
         self._match('def')
         self._match('id')
         self._match('tk_par_izq')
+        self._argument_list()
         self._match('tk_par_der')
         self._match('tk_dos_puntos')
         self._suite()
@@ -288,14 +315,14 @@ class ManualRecursiveParser:
          self._match('pass')
 
     def _for_stmt(self):
-        # for_stmt ::= 'for' IDENTIFIER 'in' 'range' '(' expression ')' ':' suite
+        # for_stmt ::= 'for' IDENTIFIER 'in' 'range' '(' argument_list ')' ':' suite
         if self.analysis_aborted: return
         self._match('for')
         self._match('id')
         self._match('in')
         self._match('range')
         self._match('tk_par_izq')
-        self._expression()
+        self._argument_list()
         self._match('tk_par_der')
         self._match('tk_dos_puntos')
         self._suite() 
@@ -333,12 +360,16 @@ class ManualRecursiveParser:
               self._factor()
 
     def _factor(self):
-        # factor ::= IDENTIFIER | INTEGER | STRING | '(' expression ')'
+        # factor ::= IDENTIFIER ( '(' argument_list_content ')' )? | INTEGER | STRING | '(' expression ')'
         if self.analysis_aborted: return
         token = self._peek()
         token_type = token[0]
         if token_type == 'id':
             self._consume()
+            if self._peek()[0] == "tk_par_izq":
+                self._match('tk_par_izq')
+                self._argument_list()
+                self._match('tk_par_der')
         elif token_type == 'tk_entero':
             self._consume()
         elif token_type == 'tk_cadena':
@@ -431,7 +462,6 @@ def main_analisis_sintactico(archivo_entrada_py, archivo_salida_txt):
 
     resultado_analisis = parser.parse() 
 
-    print(f"Resultado del análisis sintáctico: {resultado_analisis}")
     try:
         with open(archivo_salida_txt, "w", encoding="utf-8") as f_out:
             f_out.write(resultado_analisis)
