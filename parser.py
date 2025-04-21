@@ -1,10 +1,3 @@
-# -*- coding: utf-8 -*-
-
-# Asumiendo que la función lexer(filename) devuelve una lista de strings de token
-# como "<TIPO,LEXEMA,FILA,COL>" y que HA SIDO MODIFICADA para generar
-# tokens como "<INDENT,,FILA,COL>" y "<DEDENT,,FILA,COL>" correctamente.
-# También asumimos un token "<EOF,,FILA,COL>" al final.
-# Y que el lexer reconoce 'for' e 'in' como palabras clave.
 
 import lexico
 
@@ -86,35 +79,31 @@ class ManualRecursiveParser:
              return ['EOF', '', 0, 0]
 
         token = self._peek()
-        # Manejo básico de error de formato si _peek lo devuelve
         if token[0] == 'TOKEN_FORMAT_ERROR':
-             # Si _peek encontró un error de formato, _consume lo registra y aborta
-             self._handle_token_format_error(token) # Esto lanza una excepción
-             return ['EOF', '', 0, 0] # Inalcanzable después de la excepción
+             self._handle_token_format_error(token)
+             return ['EOF', '', 0, 0]
 
 
         if token[0] != 'EOF':
             self.current_token_index += 1
         return token
 
-    # Helper opcional para obtener la posición del último token válido
     def _get_location_from_last_token(self):
          if not self.tokens:
-              return [1, 1] # Default
+              return [1, 1]
          try:
               # Buscar el último token que no sea INDENT/DEDENT/EOF para una mejor estimación
               for i in range(len(self.tokens) - 1, -1, -1):
                    token_str = self.tokens[i]
                    parsed = self._parse_token_string(token_str)
                    if parsed and parsed[0] not in ('INDENT', 'DEDENT', 'EOF', 'TOKEN_FORMAT_ERROR'):
-                        # Estimar la columna final sumando la longitud del lexema
                         return [parsed[2], parsed[3] + (len(parsed[1]) if parsed[1] else 1)]
-                   elif parsed and parsed[0] == 'EOF': # Si el último token *ya* es EOF
-                        return [parsed[2], parsed[3]] # Usar su pos
+                   elif parsed and parsed[0] == 'EOF':
+                        return [parsed[2], parsed[3]] 
               # Si solo hay INDENT/DEDENT/EOF o tokens inválidos
               return [1, 1]
          except Exception:
-              return [1, 1] # Fallback
+              return [1, 1]
 
     # Método para manejar errores de formato de token, lanza excepción
     def _handle_token_format_error(self, error_token_parsed):
@@ -155,8 +144,7 @@ class ManualRecursiveParser:
 
         # Verificar si peek encontró un error de formato
         if current_type == 'TOKEN_FORMAT_ERROR':
-             self._handle_token_format_error(current_token) # Esto lanza una excepción
-             # Código inalcanzable después de la excepción, pero incluido por completitud
+             self._handle_token_format_error(current_token)
              return ['EOF', '', 0, 0]
 
         if self.analysis_aborted:
@@ -181,14 +169,12 @@ class ManualRecursiveParser:
             if not self.analysis_aborted:
                  final_token = self._peek()
                  if final_token[0] != 'EOF':
-                      # Si no estamos en EOF, algo sobró (tokens después del EOF esperado)
-                      # o el _program no consumió el EOF correctamente
-                      self._error(final_token, "Fin de archivo (EOF)") # Usar el token actual para el error
+                      self._error(final_token, "Fin de archivo (EOF)")
                  else:
                       return "El analisis sintactico ha finalizado exitosamente."
 
         except SyntaxError:
-            pass # El error ya está en self.error_info
+            pass
 
         except Exception as e:
              if not self.analysis_aborted:
@@ -228,7 +214,6 @@ class ManualRecursiveParser:
              self._print_stmt()
         elif token_type == 'pass':
              self._pass_stmt()
-        # --- Nuevo: Añadir FOR statement ---
         elif token_type == 'for':
              self._for_stmt()
         else:
@@ -302,21 +287,18 @@ class ManualRecursiveParser:
          if self.analysis_aborted: return
          self._match('pass')
 
-   # --- Método para FOR in range ---
     def _for_stmt(self):
         # for_stmt ::= 'for' IDENTIFIER 'in' 'range' '(' expression ')' ':' suite
         if self.analysis_aborted: return
         self._match('for')
-        self._match('id') # El id de la variable del bucle
+        self._match('id')
         self._match('in')
-        # --- CAMBIO: Esperar token tipo 'range' directamente ---
         self._match('range')
-        # --- Fin CAMBIO ---
         self._match('tk_par_izq')
-        self._expression() # La expresión dentro de range()
+        self._expression()
         self._match('tk_par_der')
         self._match('tk_dos_puntos')
-        self._suite() # El bloque de código del bucle
+        self._suite() 
 
 
     def _suite(self):
@@ -324,24 +306,16 @@ class ManualRecursiveParser:
         if self.analysis_aborted: return
         self._match('INDENT')
 
-        # Parsear una o más declaraciones dentro del bloque
-        # El bucle debe continuar mientras no veamos un DEDENT, EOF inesperado
-        # o NEWLINE (si se usa como terminador) y no haya habido error.
-        # Quitamos NEWLINE del check del bucle aquí, ya que _statement consume su NEWLINE si aplica.
-        # El bucle se detiene con DEDENT o EOF.
         while self._peek()[0] != 'DEDENT' and self._peek()[0] != 'EOF' and not self.analysis_aborted:
              self._statement()
 
-        # Después del bucle, debemos encontrar un DEDENT
         if self._peek()[0] == 'DEDENT':
              self._match('DEDENT')
         elif not self.analysis_aborted:
-             # Si salimos del bucle y no es DEDENT ni hay error/EOF (ya manejado arriba),
-             # significa que falta el DEDENT. _match('DEDENT') lo reportará.
-             self._match('DEDENT') # Esto generará el error correcto si el token actual no es DEDENT
+             self._match('DEDENT') 
 
 
-    # --- Funciones para expresiones (simplificadas) ---
+    # --- Funciones para expresiones ---
     def _expression(self):
         # expression ::= term (('+' | '-') term)*
         if self.analysis_aborted: return
@@ -394,40 +368,28 @@ def main_analisis_sintactico(archivo_entrada_py, archivo_salida_txt):
     """ Función principal que orquesta el lexer y el parser. """
 
     print(f"Ejecutando análisis léxico para: {archivo_entrada_py}")
-    # Asegúrate de que tu archivo lexico.py esté en el mismo directorio
-    # y que su función lexer esté implementada para manejar INDENT/DEDENT/EOF,
-    # y reconocer 'for' e 'in' como palabras clave.
-    lista_tokens = lexico.lexer(archivo_entrada_py) # Llama a TU lexer
+    lista_tokens = lexico.lexer(archivo_entrada_py)
 
-    # El lexer modificado DEBERÍA generar EOF. Esta lógica es una salvaguarda.
     if lista_tokens and not lista_tokens[-1].startswith('<EOF'):
          print("Advertencia: El lexer no generó un token EOF explícito. Añadiendo uno.")
-         # Intentar obtener pos del último token real para el EOF
          last_line, last_col = 0, 0
          try:
               if lista_tokens:
-                  # Usa una instancia temporal del parser solo para parsear el string del último token
                   temp_parser = ManualRecursiveParser([])
                   last_line, last_col = temp_parser._get_location_from_last_token()
-           # Asegura que los errores durante el parseo del último token para obtener la pos no detengan main
          except Exception as e:
              print(f"Advertencia: No se pudo determinar la posición del último token para EOF: {e}")
-             # Fallback to counting lines if location extraction fails
              try:
                  with open(archivo_entrada_py, 'r', encoding='utf-8') as f:
                       last_line = len(f.readlines())
                  last_col = 1
              except Exception:
-                  last_line, last_col = 1, 1 # Final fallback
+                  last_line, last_col = 1, 1 
 
 
          lista_tokens.append(f"<EOF,,{last_line},{last_col}>")
     elif not lista_tokens:
          print("Análisis léxico no generó tokens.")
-         # Si el lexer falla completamente y no genera tokens, creamos una lista mínima con EOF para que el parser inicie y falle limpiamente
-         # Pero si hubo error léxico reportado, deberíamos detenernos aquí
-         # La función lexer debería indicar si hubo un error que impide continuar.
-         # Por ahora, asumimos que una lista vacía significa fallo total *si el archivo no estaba vacío*.
          try:
               with open(archivo_entrada_py, 'r', encoding='utf-8') as f:
                    content = f.read()
@@ -439,8 +401,8 @@ def main_analisis_sintactico(archivo_entrada_py, archivo_salida_txt):
                            f_out.write(resultado_analisis)
                    except IOError as e:
                        print(f"Error al escribir error léxico en archivo de salida: {e}")
-                   return # Detener si el lexer falló y no generó nada
-              else: # Archivo estaba vacío, lista vacía es normal, añadir EOF
+                   return
+              else:
                    lista_tokens = ["<EOF,,1,1>"]
                    print("Archivo vacío. Procediendo con EOF.")
          except FileNotFoundError:
@@ -465,13 +427,10 @@ def main_analisis_sintactico(archivo_entrada_py, archivo_salida_txt):
 
     print(f"Análisis léxico completado ({len(lista_tokens)} tokens generados). Iniciando análisis sintáctico...")
 
-    # 2. Crear instancia del Parser con los tokens
     parser = ManualRecursiveParser(lista_tokens)
 
-    # 3. Ejecutar el Análisis Sintáctico
-    resultado_analisis = parser.parse() # Devuelve mensaje de éxito o el 1er error
+    resultado_analisis = parser.parse() 
 
-    # 4. Escribir el resultado en el archivo de salida
     print(f"Resultado del análisis sintáctico: {resultado_analisis}")
     try:
         with open(archivo_salida_txt, "w", encoding="utf-8") as f_out:
@@ -485,7 +444,6 @@ if __name__ == "__main__":
      archivo_entrada = "ejemplo.py"
      archivo_salida = "salida.txt"
 
-     # Verificar si el archivo de entrada existe (manualmente)
      existe = False
      try:
           with open(archivo_entrada, 'r'):
@@ -497,13 +455,12 @@ if __name__ == "__main__":
 
 
      if existe:
-          # Asegurarse de que los atributos del lexer existen si es necesario
           try:
               lexico.KEYWORDS
               lexico.OPERATORS
               lexico.PUNCTUATION
           except AttributeError:
               print("Error: El módulo 'lexico' debe definir KEYWORDS, OPERATORS y PUNCTUATION.")
-              exit() # Salir si el lexer no está configurado correctamente
+              exit()
 
           main_analisis_sintactico(archivo_entrada, archivo_salida)
