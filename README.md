@@ -92,9 +92,7 @@ Este parser **no** soporta:
 - Clases, módulos e importaciones
 - Excepciones (`try`, `except`)
 - Decoradores y generadores
-- Argumentos o parámetros de funciones
-- Tipos de datos compuestos (listas, diccionarios)
+- Tipos de datos compuestos 
 - Operadores lógicos y bit a bit
-- List comprehensions
-- Sentencias `break`, `continue`, `for`
+- Sentencias `break`, `continue`
 

@@ -1,1 +1,0 @@
-El analisis sintactico ha finalizado exitosamente.

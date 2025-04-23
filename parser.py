@@ -1,553 +1,403 @@
-
 import lexico
+from collections import defaultdict
 
-class ManualRecursiveParser:
-    """
-    Analizador Sintáctico Descendente Recursivo manual.
-    Consume tokens generados por el lexer proporcionado.
-    """
-    def __init__(self, tokens_list):
-        self.tokens = tokens_list
-        self.current_token_index = 0
-        self.error_info = None
-        self.analysis_aborted = False
+gramatica = {
+    'program': [
+        ['statement', 'program'],
+        ['EOF']
+    ],
+    'statement': [
+        ['id', 'statement_after_id'],
+        ['if_statement'],
+        ['while', 'comparison', 'tk_dos_puntos', 'suite'],
+        ['def', 'id', 'tk_par_izq', 'param_list', 'tk_par_der', 'tk_dos_puntos', 'suite'],
+        ['return', 'expression'],
+        ['print', 'tk_par_izq', 'expression', 'tk_par_der'],
+        ['pass'],
+        ['for', 'id', 'in', 'range', 'tk_par_izq', 'argument_list', 'tk_par_der', 'tk_dos_puntos', 'suite']
+    ],
+    'statement_after_id': [
+        ['asig'],
+        ['llamada']
+    ],
+    'if_statement': [
+        ['if', 'comparison', 'tk_dos_puntos', 'suite', 'else_part']
+    ],
+    'else_part': [
+        ['elif', 'comparison', 'tk_dos_puntos', 'suite', 'else_part'],
+        ['else', 'tk_dos_puntos', 'suite'],
+        []
+    ],
+    'asig': [
+        ['tk_asign', 'expression'],
+        ['tk_suma_asig', 'expression'],
+        ['tk_resta_asig', 'expression'],
+        ['tk_mult_asig', 'expression'],
+        ['tk_div_asig', 'expression'],
+        ['tk_div_ent_asig', 'expression'],
+        ['tk_mod_asig', 'expression'],
+        ['tk_pot_asig', 'expression'],
+        ['tk_and_bin_asig', 'expression'],
+        ['tk_or_bin_asig', 'expression'],
+        ['tk_xor_bin_asig', 'expression'],
+        ['tk_despl_izq_asig', 'expression'],
+        ['tk_despl_der_asig', 'expression']
+    ],
+    'param_list': [
+        ['id', 'param_list_cont'],
+        []
+    ],
+    'param_list_cont': [
+        ['tk_coma', 'id', 'param_list_cont'],
+        []
+    ],
+    'argument_list': [
+        ['expression', 'argument_list_cont'],
+        []
+    ],
+    'argument_list_cont': [
+        ['tk_coma', 'expression', 'argument_list_cont'],
+        []
+    ],
+    'suite': [
+        ['INDENT', 'statement', 'suite_cont']
+    ],
+    'suite_cont': [
+        ['statement', 'suite_cont'],
+        ['DEDENT']
+    ],
+    'expression': [
+        ['term', "expression'"]
+    ],
+    "expression'": [
+        ['tk_suma', 'term', "expression'"],
+        ['tk_resta', 'term', "expression'"],
+        []
+    ],
+    'term': [
+        ['factor', "term'"]
+    ],
+    "term'": [
+        ['tk_mult', 'factor', "term'"],
+        ['tk_div', 'factor', "term'"],
+        []
+    ],
+    'factor': [
+        ['tk_resta', 'factor'],
+        ['id', 'llamada'],
+        ['tk_entero'],
+        ['tk_cadena'],
+        ['tk_par_izq', 'expression', 'tk_par_der'],
+        ['list_literal']
+    ],
+    'llamada': [
+        ['tk_par_izq', 'argument_list', 'tk_par_der'],
+        ['tk_punto', 'func_call'],
+        []
+    ],
+    'func_call': [
+        ['id', 'llamada'],
+        ['tk_par_izq', 'argument_list', 'tk_par_der', 'llamada']
+    ],
+    'comparison': [
+        ['expression', 'op_comparacion', 'expression']
+    ],
+    'op_comparacion': [
+        ['tk_mayor'],
+        ['tk_menor'],
+        ['tk_igual'],
+        ['tk_dif'],
+        ['tk_mayor_igual'],
+        ['tk_menor_igual']
+    ],
+    'list_literal': [
+        ['tk_cor_izq', 'optional_expression_list', 'tk_cor_der']
+    ],
+    'optional_expression_list': [
+        ['expression_list'],
+        []
+    ],
+    'expression_list': [
+        ['expression', 'expression_list_cont']
+    ],
+    'expression_list_cont': [
+        ['tk_coma', 'expression', 'expression_list_cont'],
+        []
+    ]
+}
 
-    def _parse_token_string(self, token_string):
-        """ Parsea un string de token y devuelve una lista [TIPO, LEXEMA, FILA, COL] """
-        if not token_string or not token_string.startswith('<') or not token_string.endswith('>'):
-             if token_string and token_string.startswith('<EOF'):
-                  return ['EOF', '', 0, 0]
-             print(f"Parser Error: Formato de token inválido: {token_string}")
-             return None
+class ASDR:
+    def __init__(self, gramatica, simbolo_inicial):
+        self.gramatica = gramatica
+        self.inicial = simbolo_inicial
+        self.primeros = defaultdict(set)
+        self.siguientes = defaultdict(set)
+        self.predicciones = defaultdict(list)
 
-        content = token_string[1:-1]
+        self._calcular_primeros()
+        self._calcular_siguientes()
+        self._calcular_predicciones()
+
+        self.tokens = []
+        self.pos = 0
+        for nt in self.gramatica:
+            setattr(self, nt, self._crear_funcion(nt))
+
+    def token_actual(self):
+        return self.tokens[self.pos] if self.pos < len(self.tokens) else 'EOF'
+
+    def parse(self, tokens):
+        self.tokens = tokens + ['EOF']
+        self.pos = 0
+        print("Tokens de entrada:", self.tokens)
         try:
-            last_comma_pos = content.rindex(',')
-            col_str = content[last_comma_pos + 1:]
-
-            second_last_comma_pos = content.rindex(',', 0, last_comma_pos)
-            row_str = content[second_last_comma_pos + 1 : last_comma_pos]
-
-            type_lexeme_part = content[:second_last_comma_pos]
-
-            first_comma_pos = type_lexeme_part.find(',')
-            if first_comma_pos == -1:
-                 token_type = type_lexeme_part
-                 lexeme = ""
+            getattr(self, self.inicial)()
+            if self.token_actual() == 'EOF':
+                print("✔ Cadena aceptada")
             else:
-                token_type = type_lexeme_part[:first_comma_pos]
-                lexeme = type_lexeme_part[first_comma_pos + 1:]
-
-            row = int(row_str)
-            col = int(col_str)
-
-            return [token_type, lexeme, row, col]
-
-        except ValueError:
-            print(f"Parser Error: No se pudieron parsear componentes numéricos del token: {token_string}")
-            return None
-        except IndexError:
-             print(f"Parser Error: Problema de índice parseando token (menos de 2 comas?): {token_string}")
-             return None
+                raise SyntaxError(f"❌ Sobran símbolos '{self.tokens[self.pos:]}' tras el análisis en la posición {self.pos}")
+        except SyntaxError as e:
+            print("Error de sintaxis:", e)
         except Exception as e:
-             print(f"Parser Error: Error inesperado parseando token '{token_string}': {e}")
-             return None
+            print(f"Ocurrió un error inesperado durante el análisis: {e}")
 
-
-    def _peek(self):
-        """ Devuelve el token actual parseado [TIPO, LEXEMA, FILA, COL] sin consumirlo. Maneja fin de archivo y errores de formato. """
-        if self.analysis_aborted:
-            return ['EOF', '', 0, 0]
-
-        if self.current_token_index >= len(self.tokens):
-            last_pos = [1, 1] if not self.tokens else self._get_location_from_last_token()
-            return ['EOF', '', last_pos[0], last_pos[1]]
-
-        token_str = self.tokens[self.current_token_index]
-        parsed_token = self._parse_token_string(token_str)
-
-        if parsed_token is None or (parsed_token is not None and parsed_token[0] == 'TOKEN_FORMAT_ERROR'):
-            error_token = parsed_token if parsed_token is not None else ['TOKEN_FORMAT_ERROR', token_str, 0, 0]
-            return error_token
-
-
-        return parsed_token
-
-    def _consume(self):
-        """ Consume el token actual y devuelve el token parseado """
-        if self.analysis_aborted:
-             return ['EOF', '', 0, 0]
-
-        token = self._peek()
-        if token[0] == 'TOKEN_FORMAT_ERROR':
-             self._handle_token_format_error(token)
-             return ['EOF', '', 0, 0]
-
-
-        if token[0] != 'EOF':
-            self.current_token_index += 1
-        return token
-
-    def _get_location_from_last_token(self):
-         if not self.tokens:
-              return [1, 1]
-         try:
-              # Buscar el último token que no sea INDENT/DEDENT/EOF para una mejor estimación
-              for i in range(len(self.tokens) - 1, -1, -1):
-                   token_str = self.tokens[i]
-                   parsed = self._parse_token_string(token_str)
-                   if parsed and parsed[0] not in ('INDENT', 'DEDENT', 'EOF', 'TOKEN_FORMAT_ERROR'):
-                        return [parsed[2], parsed[3] + (len(parsed[1]) if parsed[1] else 1)]
-                   elif parsed and parsed[0] == 'EOF':
-                        return [parsed[2], parsed[3]] 
-              # Si solo hay INDENT/DEDENT/EOF o tokens inválidos
-              return [1, 1]
-         except Exception:
-              return [1, 1]
-
-    # Método para manejar errores de formato de token, lanza excepción
-    def _handle_token_format_error(self, error_token_parsed):
-        if not self.analysis_aborted:
-             self.analysis_aborted = True
-             line, col = error_token_parsed[2], error_token_parsed[3]
-             original_string = error_token_parsed[1]
-             self.error_info = f"<{line},{col}> Error lexico: formato de token invalido '{original_string}'."
-             print(self.error_info)
-        raise SyntaxError("Error de formato de token detectado")
-
-
-    def _error(self, found_token_parsed, expected_description):
-        """
-        Registra el primer error sintáctico (tipo de token inesperado) y aborta.
-        Recibe el token *encontrado* como argumento.
-        """
-        if not self.analysis_aborted:
-            self.analysis_aborted = True
-            line = found_token_parsed[2]
-            col = found_token_parsed[3]
-            found_type = found_token_parsed[0]
-            found_lexeme = found_token_parsed[1]
-
-            found_representation = found_lexeme if found_lexeme else found_type
-            if found_type == 'TOKEN_FORMAT_ERROR':
-                 found_representation = f"Token mal formado: '{found_lexeme}'"
-
-            self.error_info = f"<{line},{col}> Error sintactico: se encontro: \"{found_representation}\"; se esperaba: \"{expected_description}\"."
-            print(self.error_info)
-
-        raise SyntaxError("Error de sintaxis detectado por el parser")
-
-
-    def _match(self, expected_type):
-        current_token = self._peek()
-        current_type = current_token[0]
-
-        # Verificar si peek encontró un error de formato
-        if current_type == 'TOKEN_FORMAT_ERROR':
-             self._handle_token_format_error(current_token)
-             return ['EOF', '', 0, 0]
-
-        if self.analysis_aborted:
-            return ['EOF', '', 0, 0]
-
-        if current_type == expected_type:
-            return self._consume()
+    def coincidir(self, terminal):
+        actual = self.token_actual()
+        if actual == terminal:
+            print(f"✓ {terminal}")
+            self.pos += 1
         else:
-            self._error(current_token, f"'{expected_type}'")
-            return None
+            raise SyntaxError(f"Error de coincidencia: Se esperaba '{terminal}', se encontró '{actual}' en la posición {self.pos}")
 
+    def es_terminal(self, simbolo):
+        return simbolo not in self.gramatica and simbolo != '[]'
 
-    # --- Punto de Entrada del Parser ---
-    def parse(self):
-        """ Inicia el proceso de análisis sintáctico. """
-        self.current_token_index = 0
-        self.error_info = None
-        self.analysis_aborted = False
+    def _calcular_primeros(self):
+        cambiado = True
+        while cambiado:
+            cambiado = False
+            for nt, producciones in self.gramatica.items():
+                for prod in producciones:
+                    if prod == []:
+                        if 'ε' not in self.primeros[nt]:
+                            self.primeros[nt].add('ε')
+                            cambiado = True
+                        continue
 
-        try:
-            self._program()
-            if not self.analysis_aborted:
-                 final_token = self._peek()
-                 if final_token[0] != 'EOF':
-                      self._error(final_token, "Fin de archivo (EOF)")
-                 else:
-                      return "El analisis sintactico ha finalizado exitosamente."
+                    i = 0
+                    bloque_deriva_epsilon = True
 
-        except SyntaxError:
-            pass
+                    while i < len(prod) and bloque_deriva_epsilon:
+                        simbolo = prod[i]
+                        bloque_deriva_epsilon = False
 
-        except Exception as e:
-             if not self.analysis_aborted:
-                  current_token = self._peek()
-                  line, col = current_token[2], current_token[3]
-                  self.error_info = f"<{line},{col}> Error interno inesperado del parser: {e}"
-                  print(self.error_info)
+                        if self.es_terminal(simbolo):
+                            if simbolo not in self.primeros[nt]:
+                                self.primeros[nt].add(simbolo)
+                                cambiado = True
+                            break
+                        else:
+                            antes = len(self.primeros[nt])
+                            self.primeros[nt].update(self.primeros[simbolo] - {'ε'})
+                            if len(self.primeros[nt]) > antes:
+                                cambiado = True
 
-        return self.error_info if self.error_info else "Error desconocido durante el analisis."
+                            if 'ε' in self.primeros[simbolo]:
+                                bloque_deriva_epsilon = True
+                                i += 1
+                            else:
+                                break
 
+    def _calcular_siguientes(self):
+        cambiado = True
+        self.siguientes[self.inicial].add('EOF')
 
-    # --- Métodos para las Reglas Gramaticales ---
+        while cambiado:
+            cambiado = False
+            for nt, producciones in self.gramatica.items():
+                for prod in producciones:
+                    len_prod = len(prod)
+                    for i, simbolo_actual in enumerate(prod):
+                        if simbolo_actual in self.gramatica:
+                            siguientes_en_prod = set()
+                            j = i + 1
+                            puede_derivar_epsilon_cola = True
 
-    def _program(self):
-        # program ::= statement* EOF
-        while self._peek()[0] != 'EOF' and not self.analysis_aborted:
-             self._statement()
-        self._match('EOF')
+                            while j < len_prod and puede_derivar_epsilon_cola:
+                                siguiente_simbolo = prod[j]
+                                puede_derivar_epsilon_cola = False
 
-    def _statement(self):
-        # statement ::= assignment_stmt | if_stmt | while_stmt | def_stmt | return_stmt | print_stmt | pass_stmt | for_stmt
-        if self.analysis_aborted: return
+                                if self.es_terminal(siguiente_simbolo):
+                                    if siguiente_simbolo not in siguientes_en_prod:
+                                        siguientes_en_prod.add(siguiente_simbolo)
+                                    break
+                                else:
+                                    antes = len(siguientes_en_prod)
+                                    siguientes_en_prod.update(self.primeros[siguiente_simbolo] - {'ε'})
 
-        token_type = self._peek()[0]
+                                    if 'ε' in self.primeros[siguiente_simbolo]:
+                                        puede_derivar_epsilon_cola = True
+                                        j += 1
+                                    else:
+                                        break
 
-        if token_type == 'id':
-            self._assignment_stmt()
-        elif token_type == 'if':
-             self._if_stmt()
-        elif token_type == 'while':
-             self._while_stmt()
-        elif token_type == 'def':
-             self._def_stmt()
-        elif token_type == 'return':
-             self._return_stmt()
-        elif token_type == 'print':
-             self._print_stmt()
-        elif token_type == 'pass':
-             self._pass_stmt()
-        elif token_type == 'for':
-             self._for_stmt()
-        else:
-             self._error(self._peek(), "Inicio de declaracion (id, if, while, def, return, print, pass, for, ...)")
+                            antes = len(self.siguientes[simbolo_actual])
+                            self.siguientes[simbolo_actual].update(siguientes_en_prod)
+                            if len(self.siguientes[simbolo_actual]) > antes:
+                                cambiado = True
 
-    def _assignment_stmt(self):
-        # assignment_stmt ::= IDENTIFIER '=' expression
-        self._consume() 
-        next_token = self._peek()
-        next_token_type = next_token[0]
+                            if j == len_prod and puede_derivar_epsilon_cola:
+                                antes = len(self.siguientes[simbolo_actual])
+                                self.siguientes[simbolo_actual].update(self.siguientes[nt])
+                                if len(self.siguientes[simbolo_actual]) > antes:
+                                    cambiado = True
 
-        assignment_operators = ['tk_asign', 'tk_suma_asig', 'tk_resta_asig', 'tk_mult_asig', 'tk_div_asig', 'tk_div_ent_asig', 'tk_mod_asig', 'tk_pot_asig', 'tk_and_bin_asig', 'tk_or_bin_asig', 'tk_xor_bin_asig', 'tk_despl_izq_asig', 'tk_despl_der_asig']
+    def _calcular_predicciones(self):
+         for nt, producciones in self.gramatica.items():
+            for prod in producciones:
+                pred = set()
+                if prod == []:
+                    pred.update(self.siguientes[nt])
+                else:
+                    i = 0
+                    deriva_epsilon_prefijo = True
 
-        if next_token_type in assignment_operators:
-            self._consume() 
-            self._expression() 
+                    while i < len(prod) and deriva_epsilon_prefijo:
+                        simbolo = prod[i]
+                        deriva_epsilon_prefijo = False
 
-        elif next_token_type == 'tk_par_izq':
-            self._consume() 
-            self._argument_list() 
-            self._match('tk_par_der')
-        
-        elif next_token_type == 'tk_punto':
-            self._func_call()
+                        if self.es_terminal(simbolo):
+                            if simbolo not in pred:
+                                pred.add(simbolo)
+                            break
+                        else:
+                            pred.update(self.primeros[simbolo] - {'ε'})
+                            if 'ε' in self.primeros[simbolo]:
+                                deriva_epsilon_prefijo = True
+                                i += 1
+                            else:
+                                break
 
-        else:
-            self._error(next_token, "un operador de asignación (=, +=, -=, etc.) o '(' (para llamada de funcion)")
+                    if i == len(prod) and deriva_epsilon_prefijo:
+                        pred.update(self.siguientes[nt])
 
-     
-    def _argument_list(self):
-        # argument_list_content ::= (expression (',' expression)*)?
-        if self.analysis_aborted: return
+                self.predicciones[nt].append((prod, pred))
 
-        if self._peek()[0] == 'tk_par_der':
-            return 
+    def _crear_funcion(self, nt):
+        def funcion():
+            token = self.token_actual()
 
-        self._expression()
+            opcion_encontrada = False
+            for produccion, pred in self.predicciones[nt]:
+                if token in pred:
+                    opcion_encontrada = True
+                    print(f"{nt} → {' '.join(produccion) if produccion else 'ε'}")
 
-        while self._peek()[0] == 'tk_coma':
-            self._consume()
-            self._expression() 
+                    try:
+                        for s in produccion:
+                            if s == '[]':
+                                pass
+                            elif self.es_terminal(s):
+                                self.coincidir(s)
+                            else:
+                                getattr(self, s)()
 
-    def _if_stmt(self):
-        # if_stmt ::= 'if' comparison ':' suite ('elif' comparison ':' suite)* ('else' ':' suite)?
-        if self.analysis_aborted: return
-        self._match('if')
-        self._comparison()
-        self._match('tk_dos_puntos')
-        self._suite()
+                        return
 
-        while self._peek()[0] == 'elif' and not self.analysis_aborted:
-            self._consume()
-            self._comparison()
-            self._match('tk_dos_puntos')
-            self._suite()
+                    except SyntaxError as e:
+                         raise e
 
-        if self._peek()[0] == 'else' and not self.analysis_aborted:
-            self._consume()
-            self._match('tk_dos_puntos')
-            self._suite()
+            if not opcion_encontrada:
+                 raise SyntaxError(f"Error de sintaxis en {nt}: token actual '{token}' no válido en la posición {self.pos}. Predicciones esperadas: {[list(pred) for _, pred in self.predicciones[nt]]}")
 
-    def _while_stmt(self):
-        # while_stmt ::= 'while' comparison ':' suite
-        if self.analysis_aborted: return
-        self._match('while')
-        self._comparison()
-        self._match('tk_dos_puntos')
-        self._suite()
+        funcion.__name__ = f"parse_{nt}"
+        return funcion
 
-    def _return_stmt(self):
-        # return_stmt ::= 'return' expression?
-        if self.analysis_aborted: return
-        self._match('return')
-
-        next_token_type = self._peek()[0]
-        # Considerar NEWLINE si tu lexer lo emite antes de DEDENT o EOF para sentencias simples
-        terminators = ('DEDENT', 'EOF')
-        if next_token_type not in terminators:
-            self._expression()
-
-    def _def_stmt(self):
-        # def_stmt ::= 'def' IDENTIFIER '(' ')' ':' suite
-        if self.analysis_aborted: return
-        self._match('def')
-        self._match('id')
-        self._match('tk_par_izq')
-        self._argument_list()
-        self._match('tk_par_der')
-        self._match('tk_dos_puntos')
-        self._suite()
-
-    def _print_stmt(self):
-         # print_stmt ::= 'print' '(' expression ')'
-         if self.analysis_aborted: return
-         self._match('print')
-         self._match('tk_par_izq')
-         self._expression()
-         self._match('tk_par_der')
-
-    def _pass_stmt(self):
-         # pass_stmt ::= 'pass'
-         if self.analysis_aborted: return
-         self._match('pass')
-
-
-    def _for_stmt(self):
-        # for_stmt ::= 'for' IDENTIFIER 'in' 'range' '(' argument_list ')' ':' suite
-        if self.analysis_aborted: return
-        self._match('for')
-        self._match('id')
-        self._match('in')
-        self._match('range')
-        self._match('tk_par_izq')
-        self._argument_list()
-        self._match('tk_par_der')
-        self._match('tk_dos_puntos')
-        self._suite()
-
-    def _func_call(self):
-        while not self.analysis_aborted: # Bucle para manejar cadenas (como .append().otro)
-            next_token_type = self._peek()[0]
-
-            if next_token_type == 'tk_punto': 
-                self._consume() 
-                self._match('id')
-
-            elif next_token_type == 'tk_par_izq': 
-                self._consume() 
-                self._argument_list() 
-                self._match('tk_par_der') 
-            else: 
-                break 
-
-
-    def _suite(self):
-        """ Parsea un bloque indentado: INDENT statement+ DEDENT """
-        if self.analysis_aborted: return
-        self._match('INDENT')
-
-        while self._peek()[0] != 'DEDENT' and self._peek()[0] != 'EOF' and not self.analysis_aborted:
-             self._statement()
-
-        if self._peek()[0] == 'DEDENT':
-             self._match('DEDENT')
-        elif not self.analysis_aborted:
-             self._match('DEDENT')
-
- 
-
-
-    # --- Funciones para expresiones ---
-    def _expression(self):
-        # expression ::= term (('+' | '-') term)*
-        if self.analysis_aborted: return
-        self._term()
-        while self._peek()[0] in ('tk_suma', 'tk_resta') and not self.analysis_aborted:
-            self._consume()
-            self._term()
-    
-    def _unary(self):
-        # unary ::= '-' factor | factor
-        if self.analysis_aborted: return
-
-        if self._peek()[0] == "tk_resta":
-            self._consume()
-            self._factor()
-        else:
-            self._factor()
-
-
-    def _term(self):
-         # term ::= factor (('*' | '/') factor)*
-         if self.analysis_aborted: return
-         self._unary()
-         while self._peek()[0] in ('tk_mult', 'tk_div') and not self.analysis_aborted:
-              self._consume()
-              self._unary()
-
-    def _factor(self):
-        # factor ::= IDENTIFIER ( '(' argument_list_content ')' )? | INTEGER | STRING | '(' expression ')'
-        if self.analysis_aborted: return
-        token = self._peek()
-        token_type = token[0]
-        if token_type == 'id':
-            self._consume()
-            if self._peek()[0] == "tk_par_izq":
-                self._match('tk_par_izq')
-                self._argument_list()
-                self._match('tk_par_der')
-            elif self._peek()[0] == "tk_punto":
-                self._match('tk_punto')
-                self._func_call()
-        elif token_type == 'tk_entero':
-            self._consume()
-        elif token_type == 'tk_cadena':
-            self._consume()
-        elif token_type == 'tk_par_izq':
-            self._consume()
-            self._expression()
-            self._match('tk_par_der')
-        elif token_type == 'tk_cor_izq':
-            self._list_literal()
-        else:
-            self._error(token, "Identificador, numero entero, cadena o '('")
-
-    def _comparison(self):
-        # comparison ::= expression ('>' | '<' | '==' | '!=' | '>=' | '<=') expression
-        if self.analysis_aborted: return
-        self._expression()
-        op_type = self._peek()[0]
-        comp_ops = ('tk_mayor', 'tk_menor', 'tk_igual', 'tk_dif',
-                    'tk_mayor_igual', 'tk_menor_igual')
-        if op_type in comp_ops:
-            self._consume()
-            self._expression()
-    
-    def _list_literal(self):
-        # list_literal ::= '[' (expression (',' expression)*)? ']'
-        if self.analysis_aborted: return
-
-        self._match('tk_cor_izq')
-
-        if self._peek()[0] == 'tk_cor_der':
-            self._match('tk_cor_der')
-            return
-
-        self._expression()
-
-        while self._peek()[0] == 'tk_coma' and not self.analysis_aborted:
-            self._consume()
-            self._expression()
-
-        self._match('tk_cor_der')
-
-
-
-# --- Bloque Principal de Ejecución ---
+    def mostrar_conjuntos(self):
+        print("PRIMEROS:")
+        for nt, s in self.primeros.items():
+            print(f"  {nt}: {s}")
+        print("\nSIGUIENTES:")
+        for nt, s in self.siguientes.items():
+            print(f"  {nt}: {s}")
+        print("\nPREDICCIONES:")
+        for nt, lista in self.predicciones.items():
+            for produccion, pred in lista:
+                print(f"  {nt} → {' '.join(produccion)}: {pred}")
 
 def main_analisis_sintactico(archivo_entrada_py, archivo_salida_txt):
-    """ Función principal que orquesta el lexer y el parser. """
-
     print(f"Ejecutando análisis léxico para: {archivo_entrada_py}")
-    lista_tokens = lexico.lexer(archivo_entrada_py)
-
-    if lista_tokens and not lista_tokens[-1].startswith('<EOF'):
-         print("Advertencia: El lexer no generó un token EOF explícito. Añadiendo uno.")
-         last_line, last_col = 0, 0
-         try:
-              if lista_tokens:
-                  temp_parser = ManualRecursiveParser([])
-                  last_line, last_col = temp_parser._get_location_from_last_token()
-         except Exception as e:
-             print(f"Advertencia: No se pudo determinar la posición del último token para EOF: {e}")
-             try:
-                 with open(archivo_entrada_py, 'r', encoding='utf-8') as f:
-                      last_line = len(f.readlines())
-                 last_col = 1
-             except Exception:
-                  last_line, last_col = 1, 1 
-
-
-         lista_tokens.append(f"<EOF,,{last_line},{last_col}>")
-    elif not lista_tokens:
-         print("Análisis léxico no generó tokens.")
-         try:
-              with open(archivo_entrada_py, 'r', encoding='utf-8') as f:
-                   content = f.read()
-              if len(content) > 0:
-                   print("Asumiendo fallo léxico. Abortando análisis sintáctico.")
-                   resultado_analisis = "Error durante el analisis lexico."
-                   try:
-                      with open(archivo_salida_txt, 'w', encoding='utf-8') as f_out:
-                           f_out.write(resultado_analisis)
-                   except IOError as e:
-                       print(f"Error al escribir error léxico en archivo de salida: {e}")
-                   return
-              else:
-                   lista_tokens = ["<EOF,,1,1>"]
-                   print("Archivo vacío. Procediendo con EOF.")
-         except FileNotFoundError:
-             print(f"Error: Archivo de entrada '{archivo_entrada_py}' no encontrado.")
-             resultado_analisis = f"Error: Archivo de entrada '{archivo_entrada_py}' no encontrado."
-             try:
-                 with open(archivo_salida_txt, 'w', encoding='utf-8') as f_out:
-                      f_out.write(resultado_analisis)
-             except IOError as e:
-                  print(f"Error al escribir error léxico en archivo de salida: {e}")
-             return
-         except Exception as e:
-             print(f"Error inesperado al leer archivo para verificar si está vacío: {e}")
-             resultado_analisis = f"Error interno: {e}"
-             try:
-                 with open(archivo_salida_txt, 'w', encoding='utf-8') as f_out:
-                      f_out.write(resultado_analisis)
-             except IOError as e_io:
-                  print(f"Error al escribir error interno en archivo de salida: {e_io}")
-             return
-
-
-    print(f"Análisis léxico completado ({len(lista_tokens)} tokens generados). Iniciando análisis sintáctico...")
-
-    parser = ManualRecursiveParser(lista_tokens)
-
-    resultado_analisis = parser.parse() 
 
     try:
-        with open(archivo_salida_txt, "w", encoding="utf-8") as f_out:
-            f_out.write(resultado_analisis)
-        print(f"Resultado del análisis guardado en '{archivo_salida_txt}'")
-    except IOError as e:
-        print(f"Error: No se pudo escribir en el archivo de salida '{archivo_salida_txt}'. {e}")
+        lista_tokens_crudos = lexico.lexer(archivo_entrada_py)
+    except FileNotFoundError:
+         print(f"Error: No se encontró el archivo de entrada '{archivo_entrada_py}'.")
+         with open(archivo_salida_txt, "w", encoding="utf-8") as f:
+             f.write(f"Error: Archivo '{archivo_entrada_py}' no encontrado.")
+         return
+    except AttributeError:
+         print(f"Error: El módulo 'lexico' no tiene una función 'lexer'.")
+         with open(archivo_salida_txt, "w", encoding="utf-8") as f:
+             f.write("Error: Función lexer no encontrada en el módulo lexico.")
+         return
+    except Exception as e:
+         print(f"Error inesperado durante el análisis léxico: {e}")
+         with open(archivo_salida_txt, "w", encoding="utf-8") as f:
+             f.write(f"Error durante el análisis léxico: {e}")
+         return
 
+    if not lista_tokens_crudos:
+        print("Error: El análisis léxico no produjo tokens.")
+        with open(archivo_salida_txt, "w", encoding="utf-8") as f:
+            f.write("Error: Análisis léxico fallido o archivo vacío.")
+        return
+
+    tokens_parser = []
+    for t in lista_tokens_crudos:
+        if isinstance(t, str) and t.startswith('<') and ',' in t:
+            try:
+                tipo = t[1:].split(',')[0]
+                tokens_parser.append(tipo)
+            except IndexError:
+                 print(f"Advertencia: Token crudo con formato inesperado '{t}'. Ignorando.")
+        elif isinstance(t, str):
+             tokens_parser.append(t)
+
+    if not tokens_parser:
+         print("Error: No se pudieron extraer tipos de tokens válidos del resultado del lexer.")
+         with open(archivo_salida_txt, "w", encoding="utf-8") as f:
+             f.write("Error: No se pudieron preparar tokens para el parser.")
+         return
+
+    try:
+        print("\n--- Inicializando Parser ASDR ---")
+        parser = ASDR(gramatica, simbolo_inicial='program')
+
+        print("\n--- CONJUNTOS CALCULADOS ---")
+        parser.mostrar_conjuntos()
+
+        print("\n--- INICIANDO ANÁLISIS SINTÁCTICO ---")
+        resultado = ""
+        try:
+             parser.parse(tokens_parser)
+             resultado = "El análisis sintáctico ha finalizado exitosamente."
+        except SyntaxError as e:
+             resultado = f"Error de sintaxis: {e}"
+        except Exception as e:
+             resultado = f"Ocurrió un error inesperado durante el análisis: {e}"
+
+    except Exception as e:
+         resultado = f"Error durante la inicialización del parser: {e}"
+
+    try:
+        with open(archivo_salida_txt, "w", encoding="utf-8") as f:
+            f.write(resultado)
+        print(f"\nResultado del análisis guardado en '{archivo_salida_txt}'")
+    except IOError as e:
+        print(f"Error al escribir en el archivo de salida '{archivo_salida_txt}': {e}")
 
 if __name__ == "__main__":
-     archivo_entrada = "ejemplo.py"
-     archivo_salida = "salida.txt"
+    archivo_entrada = "ejemplo.py"
+    archivo_salida = "salida_sintactico.txt"
 
-     existe = False
-     try:
-          with open(archivo_entrada, 'r'):
-               existe = True
-     except FileNotFoundError:
-          print(f"Error: El archivo de entrada '{archivo_entrada}' no fue encontrado.")
-     except Exception as e:
-          print(f"Error al intentar abrir '{archivo_entrada}': {e}")
-
-
-     if existe:
-          try:
-              lexico.KEYWORDS
-              lexico.OPERATORS
-              lexico.PUNCTUATION
-          except AttributeError:
-              print("Error: El módulo 'lexico' debe definir KEYWORDS, OPERATORS y PUNCTUATION.")
-              exit()
-
-          main_analisis_sintactico(archivo_entrada, archivo_salida)
+    main_analisis_sintactico(archivo_entrada, archivo_salida)
