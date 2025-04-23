@@ -1,7 +1,6 @@
 # Lexer y Parser Básico para un Subconjunto de la gramtica de Python
 
-Este proyecto implementa un **analizador léxico** (`lexer`) y un **analizador sintáctico** (`parser`) para un subconjunto reducido de Python. Es una herramienta **educativa** que ilustra los conceptos de **tokenización**, análisis sintáctico **descendente recursivo**, y su relación con un **autómata con pila**.
-
+Este proyecto implementa un **analizador léxico** (`lexer`) y un **analizador sintáctico** (`parser`) para un subconjunto reducido de la gramatica de Python.
 ---
 
 ##  Estructura del Proyecto

@@ -201,20 +201,7 @@ class ManualRecursiveParser:
         token_type = self._peek()[0]
 
         if token_type == 'id':
-             self._consume()
-             next_token = self._peek()[0]
-             if next_token == 'tk_asign':
-                self._match('tk_asign') 
-                self._expression()      
-
-             elif next_token == 'tk_par_izq':
-                 self._match('tk_par_izq')          
-                 self._argument_list() 
-                 self._match('tk_par_der')        
-
-             else:
-                self._error(self._peek(), "'=' o '(' (para llamada de funcion)")
-
+            self._assignment_stmt()
         elif token_type == 'if':
              self._if_stmt()
         elif token_type == 'while':
@@ -234,10 +221,27 @@ class ManualRecursiveParser:
 
     def _assignment_stmt(self):
         # assignment_stmt ::= IDENTIFIER '=' expression
-        if self.analysis_aborted: return
-        self._match('id')
-        self._match('tk_asign')
-        self._expression()
+        self._consume() 
+        next_token = self._peek()
+        next_token_type = next_token[0]
+
+        assignment_operators = ['tk_asign', 'tk_suma_asig', 'tk_resta_asig', 'tk_mult_asig', 'tk_div_asig', 'tk_div_ent_asig', 'tk_mod_asig', 'tk_pot_asig', 'tk_and_bin_asig', 'tk_or_bin_asig', 'tk_xor_bin_asig', 'tk_despl_izq_asig', 'tk_despl_der_asig']
+
+        if next_token_type in assignment_operators:
+            self._consume() 
+            self._expression() 
+
+        elif next_token_type == 'tk_par_izq':
+            self._consume() 
+            self._argument_list() 
+            self._match('tk_par_der')
+        
+        elif next_token_type == 'tk_punto':
+            self._func_call()
+
+        else:
+            self._error(next_token, "un operador de asignación (=, +=, -=, etc.) o '(' (para llamada de funcion)")
+
      
     def _argument_list(self):
         # argument_list_content ::= (expression (',' expression)*)?
@@ -314,6 +318,7 @@ class ManualRecursiveParser:
          if self.analysis_aborted: return
          self._match('pass')
 
+
     def _for_stmt(self):
         # for_stmt ::= 'for' IDENTIFIER 'in' 'range' '(' argument_list ')' ':' suite
         if self.analysis_aborted: return
@@ -325,7 +330,22 @@ class ManualRecursiveParser:
         self._argument_list()
         self._match('tk_par_der')
         self._match('tk_dos_puntos')
-        self._suite() 
+        self._suite()
+
+    def _func_call(self):
+        while not self.analysis_aborted: # Bucle para manejar cadenas (como .append().otro)
+            next_token_type = self._peek()[0]
+
+            if next_token_type == 'tk_punto': 
+                self._consume() 
+                self._match('id')
+
+            elif next_token_type == 'tk_par_izq': 
+                self._consume() 
+                self._argument_list() 
+                self._match('tk_par_der') 
+            else: 
+                break 
 
 
     def _suite(self):
@@ -339,7 +359,9 @@ class ManualRecursiveParser:
         if self._peek()[0] == 'DEDENT':
              self._match('DEDENT')
         elif not self.analysis_aborted:
-             self._match('DEDENT') 
+             self._match('DEDENT')
+
+ 
 
 
     # --- Funciones para expresiones ---
@@ -350,14 +372,25 @@ class ManualRecursiveParser:
         while self._peek()[0] in ('tk_suma', 'tk_resta') and not self.analysis_aborted:
             self._consume()
             self._term()
+    
+    def _unary(self):
+        # unary ::= '-' factor | factor
+        if self.analysis_aborted: return
+
+        if self._peek()[0] == "tk_resta":
+            self._consume()
+            self._factor()
+        else:
+            self._factor()
+
 
     def _term(self):
          # term ::= factor (('*' | '/') factor)*
          if self.analysis_aborted: return
-         self._factor()
+         self._unary()
          while self._peek()[0] in ('tk_mult', 'tk_div') and not self.analysis_aborted:
               self._consume()
-              self._factor()
+              self._unary()
 
     def _factor(self):
         # factor ::= IDENTIFIER ( '(' argument_list_content ')' )? | INTEGER | STRING | '(' expression ')'
@@ -370,6 +403,9 @@ class ManualRecursiveParser:
                 self._match('tk_par_izq')
                 self._argument_list()
                 self._match('tk_par_der')
+            elif self._peek()[0] == "tk_punto":
+                self._match('tk_punto')
+                self._func_call()
         elif token_type == 'tk_entero':
             self._consume()
         elif token_type == 'tk_cadena':
@@ -378,6 +414,8 @@ class ManualRecursiveParser:
             self._consume()
             self._expression()
             self._match('tk_par_der')
+        elif token_type == 'tk_cor_izq':
+            self._list_literal()
         else:
             self._error(token, "Identificador, numero entero, cadena o '('")
 
@@ -391,6 +429,25 @@ class ManualRecursiveParser:
         if op_type in comp_ops:
             self._consume()
             self._expression()
+    
+    def _list_literal(self):
+        # list_literal ::= '[' (expression (',' expression)*)? ']'
+        if self.analysis_aborted: return
+
+        self._match('tk_cor_izq')
+
+        if self._peek()[0] == 'tk_cor_der':
+            self._match('tk_cor_der')
+            return
+
+        self._expression()
+
+        while self._peek()[0] == 'tk_coma' and not self.analysis_aborted:
+            self._consume()
+            self._expression()
+
+        self._match('tk_cor_der')
+
 
 
 # --- Bloque Principal de Ejecución ---
