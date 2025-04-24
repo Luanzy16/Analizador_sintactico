@@ -1,1 +1,1 @@
-El análisis sintáctico ha finalizado exitosamente.
+❌ Error sintáctico: <49,5> Error sintactico: Se esperaba: “tk_dos_puntos”; se encontró: “INDENT”.

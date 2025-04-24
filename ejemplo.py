@@ -45,7 +45,7 @@ for i in range(5):
 for j in range(a, b): 
     print(j)
 
-for k in range(0, 20, 2): 
+for k in range(0, 20, 2):
     print(k)
 
 # Ejemplo 6: Anidamiento y combinación

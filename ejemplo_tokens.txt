@@ -171,7 +171,6 @@
 <tk_coma,,,48,21>
 <tk_entero,2,48,23>
 <tk_par_der,),48,24>
-<tk_dos_puntos,:,48,25>
 <INDENT,,49,5>
 <print,,49,5>
 <tk_par_izq,(,49,10>
