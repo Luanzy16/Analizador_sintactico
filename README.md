@@ -65,25 +65,10 @@ python parser.py
 - Verifica si la secuencia de tokens sigue las **reglas gramaticales**
 - Usa **análisis descendente recursivo**
 - Cada no terminal se implementa como un **método**
-- Usa funciones como `_match()` y `_peek()` para navegar entre tokens
 - Si hay error, lanza una excepción con la posición exacta
 
 ---
 
-### Autómata con Pila
-
-El parser simula un **Autómata con Pila Determinista (APD)**:
-
-| Elemento del AP               | Equivalente en el Parser                             |
-|------------------------------|------------------------------------------------------|
-| Estados                      | Métodos de la clase `ManualRecursiveParser`         |
-| Entrada (`Σ`)                | Tokens generados por el lexer                       |
-| Pila (`Γ`)                   | Métodos llamados recursivamente                     |
-| Transiciones (`δ`)           | Lógica en `_match()`, `_peek()` y llamadas recursivas |
-| Símbolo inicial              | Método `_program`                                   |
-| Condición de aceptación      | Se consumen todos los tokens y termina `_program()` |
-
----
 
 ## ⚠️ Limitaciones
 
